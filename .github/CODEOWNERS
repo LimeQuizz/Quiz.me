@@ -1,0 +1,8 @@
+# Maintainers review every change. Security-sensitive paths are listed
+# separately so they stay owned even if the default line changes.
+*                         @lilayam
+/web/src/server/          @lilayam
+/web/src/middleware.ts    @lilayam
+/extractor/app/           @lilayam
+/.github/                 @lilayam
+/deploy/                  @lilayam
