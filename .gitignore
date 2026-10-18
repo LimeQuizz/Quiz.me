@@ -1,0 +1,41 @@
+# Secrets: never commit real environment files. Only .env.example is tracked.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+web/coverage/
+web/test-results/
+web/playwright-report/
+web/blob-report/
+*.tsbuildinfo
+next-env.d.ts
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+extractor/dist/
+
+# Helm
+deploy/helm/quizme/charts/
+*.tgz
+
+# Bicep build output
+deploy/azure-container-apps/*.json
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

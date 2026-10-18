@@ -1,0 +1,15 @@
+# gitleaks configuration. Extends the default rule set.
+# Placeholders in .env.example and docs look like <your-...> or "change-me"
+# and are not real secrets.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented placeholders and generated test fixtures"
+regexes = [
+  '''<your-[a-z0-9-]+>''',
+  '''change-me[a-z0-9-]*''',
+]
+paths = [
+  '''extractor/tests/fixtures/.*\.(pdf|pptx|pptm)$''',
+]
