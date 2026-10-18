@@ -1,0 +1,8 @@
+# Overlay for Playwright e2e runs only. Enables the test Credentials provider,
+# which refuses to load unless AUTH_TEST_MODE=true and AUTH_URL is local.
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d
+services:
+  web:
+    environment:
+      AUTH_TEST_MODE: "true"
+      AUTH_URL: http://localhost:3000

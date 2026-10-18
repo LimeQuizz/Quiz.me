@@ -27,6 +27,7 @@ __pycache__/
 coverage.xml
 htmlcov/
 extractor/dist/
+web/dist/
 
 # Helm
 deploy/helm/quizme/charts/
