@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "quizme.fullname" . }}-extractor
+  labels:
+    {{- include "quizme.labels" . | nindent 4 }}
+    app.kubernetes.io/component: extractor
+spec:
+  replicas: {{ .Values.extractor.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "quizme.selector" (dict "root" . "component" "extractor") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "quizme.labels" . | nindent 8 }}
+        app.kubernetes.io/component: extractor
+      {{- with .Values.extractor.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "quizme.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "quizme.podSecurityContext" . | nindent 8 }}
+      # In-flight extractions may take up to timeoutSeconds.
+      terminationGracePeriodSeconds: {{ add .Values.extractor.timeoutSeconds 15 }}
+      containers:
+        - name: extractor
+          image: {{ include "quizme.image" (dict "image" .Values.extractor.image "root" .) | quote }}
+          imagePullPolicy: {{ .Values.extractor.image.pullPolicy }}
+          securityContext:
+            {{- include "quizme.containerSecurityContext" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - { name: EXTRACTOR_TMP_DIR, value: /tmp }
+            - { name: EXTRACTOR_MAX_CONCURRENCY, value: {{ .Values.extractor.maxConcurrency | quote }} }
+            - { name: EXTRACTOR_TIMEOUT_SECONDS, value: {{ .Values.extractor.timeoutSeconds | quote }} }
+            - { name: EXTRACTOR_MAX_PAGES, value: {{ .Values.extractor.maxPages | quote }} }
+            - { name: EXTRACTOR_OCR_DPI, value: {{ .Values.extractor.ocrDpi | quote }} }
+            - { name: EXTRACTOR_MEMORY_LIMIT_MB, value: {{ .Values.extractor.workerMemoryLimitMb | quote }} }
+            {{- include "quizme.secretEnv" (dict "name" "EXTRACTOR_SHARED_SECRET" "path" "extractor" "secret" .Values.secrets.extractor.existingSecret "key" .Values.secrets.extractor.key) | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.extractor.resources | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: {{ .Values.extractor.tmpSizeLimit }} }
+      {{- with .Values.extractor.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.extractor.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.extractor.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

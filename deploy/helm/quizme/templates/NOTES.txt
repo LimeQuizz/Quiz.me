@@ -1,0 +1,11 @@
+Quiz.me {{ .Chart.AppVersion }} is installed as release {{ .Release.Name }}.
+
+URL: {{ .Values.web.publicUrl }}
+
+OAuth redirect URIs to register:
+  Google:    {{ .Values.web.publicUrl }}/api/auth/callback/google
+  Microsoft: {{ .Values.web.publicUrl }}/api/auth/callback/microsoft-entra-id
+
+Set HSTS at your ingress (for example, Strict-Transport-Security:
+max-age=63072000; includeSubDomains). Verify image signatures before
+deploying; see docs/deploy.md.

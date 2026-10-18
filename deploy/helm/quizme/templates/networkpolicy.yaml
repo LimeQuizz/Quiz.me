@@ -1,0 +1,85 @@
+{{- if .Values.networkPolicy.enabled }}
+# The extractor accepts traffic only from web pods of this release.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "quizme.fullname" . }}-extractor-ingress
+  labels:
+    {{- include "quizme.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "quizme.selector" (dict "root" . "component" "extractor") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "quizme.selector" (dict "root" . "component" "web") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 8000 }
+---
+# The extractor needs no network access at all; only DNS is allowed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "quizme.fullname" . }}-extractor-egress
+  labels:
+    {{- include "quizme.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "quizme.selector" (dict "root" . "component" "extractor") | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+{{- if .Values.networkPolicy.web.enabled }}
+---
+# Optional policy for web: ingress from the ingress controller, egress to
+# DNS, the extractor, Postgres, and HTTPS (OAuth token and key endpoints).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "quizme.fullname" . }}-web
+  labels:
+    {{- include "quizme.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "quizme.selector" (dict "root" . "component" "web") | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        {{- toYaml .Values.networkPolicy.web.ingressFrom | nindent 8 }}
+      ports:
+        - { protocol: TCP, port: 3000 }
+  egress:
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "quizme.selector" (dict "root" . "component" "extractor") | nindent 14 }}
+      ports:
+        - { protocol: TCP, port: 8000 }
+    - to:
+        - ipBlock: { cidr: {{ .Values.networkPolicy.web.postgresCidr }} }
+      ports:
+        - { protocol: TCP, port: {{ .Values.networkPolicy.web.postgresPort }} }
+    - ports:
+        - { protocol: TCP, port: 443 }
+{{- end }}
+{{- end }}

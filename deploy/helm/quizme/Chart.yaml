@@ -1,0 +1,13 @@
+apiVersion: v2
+name: quizme
+description: Quiz.me, an open source flashcard app that turns PDFs and slides into study decks
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+license: Apache-2.0
+home: https://github.com/LimeQuizz/Quiz.me
+sources:
+  - https://github.com/LimeQuizz/Quiz.me
+keywords: [flashcards, education, quiz, spaced-repetition]
+annotations:
+  artifacthub.io/license: Apache-2.0

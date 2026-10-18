@@ -1,0 +1,33 @@
+suite: extractor deployment and service
+templates:
+  - templates/extractor-deployment.yaml
+  - templates/extractor-service.yaml
+values:
+  - ../ci-values.yaml
+tests:
+  - it: is hardened and memory limited
+    template: templates/extractor-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.capabilities.drop
+          value: ["ALL"]
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 2Gi
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tmp
+            emptyDir: { medium: Memory, sizeLimit: 256Mi }
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content: { name: EXTRACTOR_TIMEOUT_SECONDS, value: "60" }
+  - it: is only reachable inside the cluster
+    template: templates/extractor-service.yaml
+    asserts:
+      - equal:
+          path: spec.type
+          value: ClusterIP

@@ -1,0 +1,106 @@
+# Default values for the Quiz.me chart. Every secret is referenced by the
+# name of a Kubernetes Secret you create yourself (or sync from a vault);
+# the chart never renders secret values.
+
+nameOverride: ""
+fullnameOverride: ""
+
+web:
+  image:
+    repository: ghcr.io/limequizz/quizme-web
+    # Defaults to the chart appVersion. Prefer an immutable git-sha tag or a digest.
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  # Public URL users reach the app on; used for OAuth callbacks and the
+  # origin check. Must be https in production.
+  publicUrl: https://<your-domain>
+  logLevel: info
+  # Run migrations in the web container at start (uses MIGRATION_DATABASE_URL).
+  runMigrations: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: "1", memory: 768Mi }
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  service:
+    type: ClusterIP
+    port: 80
+
+extractor:
+  image:
+    repository: ghcr.io/limequizz/quizme-extractor
+    tag: ""
+    digest: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  maxConcurrency: 2
+  timeoutSeconds: 60
+  maxPages: 300
+  ocrDpi: 200
+  # Address-space limit for each extraction worker process, in MB. Keep it
+  # below resources.limits.memory.
+  workerMemoryLimitMb: 1536
+  tmpSizeLimit: 256Mi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  service:
+    port: 8000
+
+# Names of existing Kubernetes Secrets and the keys inside them.
+secrets:
+  database:
+    existingSecret: ""          # required
+    key: DATABASE_URL           # runtime role (DML only)
+  migrationDatabase:
+    existingSecret: ""          # optional; falls back to DATABASE_URL
+    key: MIGRATION_DATABASE_URL # migration role (owns the schema)
+  auth:
+    existingSecret: ""          # required
+    key: AUTH_SECRET
+  google:
+    existingSecret: ""          # required
+    clientIdKey: AUTH_GOOGLE_ID
+    clientSecretKey: AUTH_GOOGLE_SECRET
+  microsoft:
+    existingSecret: ""          # required
+    clientIdKey: AUTH_MICROSOFT_ENTRA_ID_ID
+    clientSecretKey: AUTH_MICROSOFT_ENTRA_ID_SECRET
+  extractor:
+    existingSecret: ""          # required
+    key: EXTRACTOR_SHARED_SECRET
+
+ingress:
+  enabled: true
+  className: ""
+  host: <your-domain>
+  annotations: {}
+  tls:
+    enabled: true
+    secretName: quizme-tls
+
+networkPolicy:
+  enabled: true
+  # Extra rules for the web pod. Web needs egress to Postgres, the extractor,
+  # DNS, and HTTPS to Google and Microsoft identity endpoints.
+  web:
+    enabled: false
+    ingressFrom:
+      - namespaceSelector: {}
+    postgresCidr: 0.0.0.0/0
+    postgresPort: 5432
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+imagePullSecrets: []

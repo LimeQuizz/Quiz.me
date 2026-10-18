@@ -1,0 +1,17 @@
+suite: ingress
+templates:
+  - templates/ingress.yaml
+values:
+  - ../ci-values.yaml
+tests:
+  - it: routes the host to the web service with TLS
+    asserts:
+      - equal:
+          path: spec.rules[0].host
+          value: quizme.example.org
+      - equal:
+          path: spec.rules[0].http.paths[0].backend.service.name
+          value: RELEASE-NAME-quizme-web
+      - equal:
+          path: spec.tls[0].secretName
+          value: quizme-tls

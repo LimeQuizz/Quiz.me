@@ -1,0 +1,12 @@
+# Values used by `helm lint` and `helm template` in CI. Placeholders only.
+web:
+  publicUrl: https://quizme.example.org
+ingress:
+  host: quizme.example.org
+secrets:
+  database: { existingSecret: quizme-db }
+  migrationDatabase: { existingSecret: quizme-db }
+  auth: { existingSecret: quizme-auth }
+  google: { existingSecret: quizme-oauth }
+  microsoft: { existingSecret: quizme-oauth }
+  extractor: { existingSecret: quizme-extractor }

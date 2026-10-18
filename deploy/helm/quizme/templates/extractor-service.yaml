@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "quizme.fullname" . }}-extractor
+  labels:
+    {{- include "quizme.labels" . | nindent 4 }}
+    app.kubernetes.io/component: extractor
+spec:
+  # Cluster-internal only; never exposed through the ingress.
+  type: ClusterIP
+  selector:
+    {{- include "quizme.selector" (dict "root" . "component" "extractor") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.extractor.service.port }}
+      targetPort: http

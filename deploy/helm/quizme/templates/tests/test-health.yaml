@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "quizme.fullname" . }}-test-health
+  labels:
+    {{- include "quizme.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    {{- include "quizme.podSecurityContext" . | nindent 4 }}
+  containers:
+    - name: health
+      image: {{ include "quizme.image" (dict "image" .Values.web.image "root" .) | quote }}
+      securityContext:
+        {{- include "quizme.containerSecurityContext" . | nindent 8 }}
+      command: ["node", "-e"]
+      args:
+        - |
+          const base = "http://{{ include "quizme.fullname" . }}-web:{{ .Values.web.service.port }}";
+          fetch(base + "/api/health")
+            .then((r) => { if (!r.ok) throw new Error("status " + r.status); return fetch(base + "/signin"); })
+            .then((r) => { if (!r.headers.get("content-security-policy")) throw new Error("missing CSP"); console.log("ok"); })
+            .catch((e) => { console.error(e.message); process.exit(1); });
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits: { cpu: 100m, memory: 128Mi }

@@ -1,0 +1,4 @@
+/tests/
+*.tgz
+.DS_Store
+ci-values.yaml
