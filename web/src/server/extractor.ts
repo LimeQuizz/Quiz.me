@@ -6,6 +6,7 @@ export class ExtractorError extends Error {
     readonly status: number,
     readonly code: string,
     readonly userMessage: string,
+    readonly retryAfter?: number,
   ) {
     super(code);
   }
@@ -27,6 +28,7 @@ const MESSAGES: Record<string, string> = {
   macro_enabled: "Macro-enabled presentations (.pptm) aren't supported. Save it as .pptx and try again.",
   too_many_pages: "The file has more than 300 pages or slides.",
   corrupt_file: "The file appears to be damaged.",
+  busy: "Quiz.me is busy right now. Please try again in a moment.",
   timeout: "The file took too long to process. Try a smaller file.",
 };
 
@@ -46,8 +48,14 @@ export async function extractCards(body: ReadableStream<Uint8Array>, signal?: Ab
   if (!res.ok) {
     const payload = (await res.json().catch(() => ({}))) as { error?: string };
     const code = typeof payload.error === "string" ? payload.error : "extraction_failed";
-    const status = [413, 415, 422, 504].includes(res.status) ? res.status : 502;
-    throw new ExtractorError(status, code, MESSAGES[code] ?? "The file could not be processed.");
+    const status = [413, 415, 422, 503, 504].includes(res.status) ? res.status : 502;
+    const retryAfter = Number(res.headers.get("retry-after"));
+    throw new ExtractorError(
+      status,
+      code,
+      MESSAGES[code] ?? "The file could not be processed.",
+      Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 300) : undefined,
+    );
   }
   const parsed = extractorResponseSchema.safeParse(await res.json());
   if (!parsed.success) throw new ExtractorError(502, "bad_extractor_response", "The file could not be processed.");

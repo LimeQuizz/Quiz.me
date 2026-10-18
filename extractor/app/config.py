@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     ocr_language: str = "eng"
     tmp_dir: str = "/tmp"
     max_concurrency: int = Field(default=2, ge=1, le=16)
+    # Requests allowed to wait for a slot; more are turned away with 503.
+    queue_size: int = Field(default=4, ge=0, le=64)
+    # Longest a request may wait for a slot before it is turned away.
+    max_queue_wait_seconds: float = Field(default=30.0, gt=0, le=300)
+    # Deadline for receiving the whole request body (slow-client defense).
+    body_timeout_seconds: float = Field(default=30.0, gt=0, le=300)
     memory_limit_mb: int = Field(default=1536, ge=256)
     log_level: str = "info"
 

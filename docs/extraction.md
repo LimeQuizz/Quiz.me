@@ -41,6 +41,7 @@ Errors are JSON `{"error": "<code>", "message": "..."}`:
 | Status | `error` | Cause |
 |--------|---------|-------|
 | 400 | `empty_body` | No bytes sent |
+| 408 | `body_timeout` | The body did not arrive within `EXTRACTOR_BODY_TIMEOUT_SECONDS` (30) |
 | 401 | `unauthorized` | Missing or wrong shared secret |
 | 413 | `too_large` | Over `EXTRACTOR_MAX_BYTES` (25 MB), checked on `Content-Length` and while streaming |
 | 415 | `unsupported_file` | Magic bytes are not `%PDF-` or a ZIP, or the ZIP is not a presentation |
@@ -48,6 +49,7 @@ Errors are JSON `{"error": "<code>", "message": "..."}`:
 | 422 | `macro_enabled` | `.pptm` content type or a `vbaProject.bin` part |
 | 422 | `too_many_pages` | More than `EXTRACTOR_MAX_PAGES` (300) pages or slides |
 | 422 | `corrupt_file` | Parser failure, ZIP bomb heuristics |
+| 503 | `busy` | Overloaded; see "Admission control". Carries `Retry-After`. |
 | 504 | `timeout` | Extraction exceeded `EXTRACTOR_TIMEOUT_SECONDS` (60) |
 
 ## File handling
@@ -65,8 +67,24 @@ Errors are JSON `{"error": "<code>", "message": "..."}`:
 5. The temp file is deleted in a `finally` block on every path: success,
    validation error, timeout, crash, or client disconnect.
 
+## Admission control
+
 At most `EXTRACTOR_MAX_CONCURRENCY` (default 2) extractions run at once per
-replica; further requests wait.
+replica and at most `EXTRACTOR_QUEUE_SIZE` (default 4) more wait. A request is
+admitted before its body is read, so an overloaded replica does not spend
+bandwidth or disk on uploads it cannot process.
+
+The extractor keeps a moving average of how long extractions take. A new
+request is turned away with `503 busy` at once if the queue is full, or if
+the average says it would wait longer than
+`EXTRACTOR_MAX_QUEUE_WAIT_SECONDS` (default 30). `Retry-After` is derived
+from the same average, so it grows when documents are slow (OCR-heavy) and
+shrinks when they are fast. A request that does get queued but still waits
+past the limit also gets `503`.
+
+uvicorn caps open connections at 64 (`--limit-concurrency`, excess gets
+`503`) and drops idle keep-alive connections after 5 s. The whole body must
+arrive within 30 s, which defeats slow-upload attacks.
 
 ## Pipeline
 

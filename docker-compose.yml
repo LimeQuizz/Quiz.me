@@ -73,6 +73,8 @@ services:
       EXTRACTOR_URL: http://extractor:8000
       EXTRACTOR_SHARED_SECRET: ${EXTRACTOR_SHARED_SECRET}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # No proxy in front of web in compose, so do not trust X-Forwarded-For.
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
     tmpfs:
       - /tmp:size=64m,mode=1777
       - /app/.next/cache:size=64m,uid=10001,gid=10001

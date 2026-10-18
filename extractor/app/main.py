@@ -20,6 +20,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from . import __version__
+from .admission import AdmissionController, Busy
 from .config import Settings, get_settings
 from .logging import configure, log
 from .pipeline.errors import ERRORS, ExtractionError
@@ -41,7 +42,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url=None,
     )
     app.state.settings = settings
-    app.state.slots = asyncio.Semaphore(settings.max_concurrency)
+    admission = AdmissionController(
+        concurrency=settings.max_concurrency,
+        queue_size=settings.queue_size,
+        max_wait_seconds=settings.max_queue_wait_seconds,
+    )
+    app.state.admission = admission
 
     def require_secret(
         x_extractor_secret: Annotated[str | None, Header(alias=SECRET_HEADER)] = None,
@@ -71,22 +77,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log(logger, logging.INFO, "upload rejected", request_id=request_id, reason="too_large")
             raise HTTPException(413, {"error": "too_large", "max_bytes": settings.max_bytes})
 
-        fd, name = tempfile.mkstemp(prefix="upload-", dir=settings.tmp_dir)
+        # Admit before reading the body, so an overloaded replica sheds load
+        # without spending bandwidth or disk on it.
+        try:
+            admission.admit()
+        except Busy as exc:
+            log(
+                logger,
+                logging.WARNING,
+                "extraction shed",
+                request_id=request_id,
+                admitted=admission.admitted,
+                retry_after=exc.retry_after,
+            )
+            raise HTTPException(
+                503, {"error": "busy"}, headers={"Retry-After": str(exc.retry_after)}
+            ) from None
+
+        try:
+            fd, name = tempfile.mkstemp(prefix="upload-", dir=settings.tmp_dir)
+        except OSError:
+            admission.release()
+            raise
         path = Path(name)
         try:
             size = 0
             head = b""
             with os.fdopen(fd, "wb") as fh:
                 os.fchmod(fh.fileno(), 0o600)
-                async for chunk in request.stream():
-                    size += len(chunk)
-                    if size > settings.max_bytes:
-                        raise HTTPException(
-                            413, {"error": "too_large", "max_bytes": settings.max_bytes}
-                        )
-                    if len(head) < 8:
-                        head = (head + chunk)[:8]
-                    fh.write(chunk)
+                try:
+                    async with asyncio.timeout(settings.body_timeout_seconds):
+                        async for chunk in request.stream():
+                            size += len(chunk)
+                            if size > settings.max_bytes:
+                                raise HTTPException(
+                                    413, {"error": "too_large", "max_bytes": settings.max_bytes}
+                                )
+                            if len(head) < 8:
+                                head = (head + chunk)[:8]
+                            fh.write(chunk)
+                except TimeoutError:
+                    raise HTTPException(408, {"error": "body_timeout"}) from None
             if size == 0:
                 raise HTTPException(400, {"error": "empty_body"})
             try:
@@ -96,8 +127,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     exc.status, {"error": exc.code, "message": exc.message}
                 ) from exc
 
-            async with app.state.slots:
-                result = await _run_worker(path, settings)
+            try:
+                async with admission.run():
+                    result = await _run_worker(path, settings)
+            except Busy as exc:
+                raise HTTPException(
+                    503, {"error": "busy"}, headers={"Retry-After": str(exc.retry_after)}
+                ) from None
             log(
                 logger,
                 logging.INFO,
@@ -123,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             raise
         finally:
+            admission.release()
             with contextlib.suppress(FileNotFoundError):
                 path.unlink()
 

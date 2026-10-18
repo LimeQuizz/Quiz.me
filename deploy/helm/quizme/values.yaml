@@ -17,6 +17,11 @@ web:
   # origin check. Must be https in production.
   publicUrl: https://<your-domain>
   logLevel: info
+  # Number of reverse proxies in front of web that append X-Forwarded-For
+  # (the ingress controller is usually 1). Used for per-IP rate limits.
+  trustedProxyHops: 1
+  # Uploads processed at once per web pod; more get 503 with Retry-After.
+  uploadMaxInFlight: 8
   # Run migrations in the web container at start (uses MIGRATION_DATABASE_URL).
   runMigrations: true
   resources:
@@ -38,6 +43,11 @@ extractor:
     pullPolicy: IfNotPresent
   replicaCount: 1
   maxConcurrency: 2
+  # Requests that may wait for a slot; beyond this (or when the learned
+  # average duration says the wait would exceed maxQueueWaitSeconds) the
+  # extractor answers 503 with Retry-After before reading the body.
+  queueSize: 4
+  maxQueueWaitSeconds: 30
   timeoutSeconds: 60
   maxPages: 300
   ocrDpi: 200
@@ -82,6 +92,10 @@ ingress:
   enabled: true
   className: ""
   host: <your-domain>
+  # Add your controller's flood limits here as a first line of defense, for
+  # example with ingress-nginx:
+  #   nginx.ingress.kubernetes.io/limit-rps: "20"
+  #   nginx.ingress.kubernetes.io/limit-connections: "20"
   annotations: {}
   tls:
     enabled: true

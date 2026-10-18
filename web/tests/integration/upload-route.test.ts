@@ -6,6 +6,9 @@ import { basicCard, createUser } from "./helpers";
 let currentUser: string | null = null;
 vi.mock("@/server/auth/session", () => ({ getUserId: async () => currentUser }));
 
+// All test requests share one client address; keep the per-IP limiter out
+// of the way except where a test exercises it.
+process.env.RATE_LIMIT_SCALE = "100";
 const { POST } = await import("@/app/api/uploads/route");
 
 const ORIGIN = "http://localhost:3000";
@@ -123,5 +126,26 @@ describe("POST /api/uploads", () => {
     const res = await upload(PDF);
     expect(res.status).toBe(429);
     expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(3500);
+  });
+
+  it("passes extractor overload through as 503 with Retry-After", async () => {
+    currentUser = await createUser("erin");
+    fetchMock.mockResolvedValue(Response.json({ error: "busy" }, { status: 503, headers: { "Retry-After": "7" } }));
+    const res = await upload(PDF);
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("7");
+    expect((await res.json()).error).toBe("busy");
+  });
+
+  it("stops calling a failing extractor (circuit breaker) and says when to retry", async () => {
+    currentUser = await createUser("dave");
+    fetchMock.mockRejectedValue(new TypeError("fetch failed"));
+    // erin's 503 above already counted once; four more failures open it.
+    for (let i = 0; i < 4; i++) expect((await upload(PDF)).status).toBe(502);
+    const calls = fetchMock.mock.calls.length;
+    const res = await upload(PDF);
+    expect(res.status).toBe(503);
+    expect(Number(res.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(fetchMock.mock.calls.length).toBe(calls);
   });
 });

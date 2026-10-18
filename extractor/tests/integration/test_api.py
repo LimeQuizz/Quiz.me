@@ -6,6 +6,7 @@ temp-file cleanup, and error mapping end to end.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
@@ -193,3 +194,44 @@ def test_settings_refuse_short_secret() -> None:
 
 def test_settings_cap_ocr_dpi() -> None:
     assert Settings(shared_secret=SECRET, ocr_dpi=1200).ocr_dpi == 300  # type: ignore[arg-type]
+
+
+async def test_overload_sheds_with_503_and_retry_after(
+    make_client: ClientFactory, tmp_upload_dir: Path
+) -> None:
+    """Stress: 12 simultaneous uploads against 1 slot and a queue of 1.
+
+    Every request gets a definite answer (200 or 503 busy with Retry-After),
+    nothing errors, the service stays healthy, and no temp files remain.
+    """
+    body = (FIXTURES / "glossary.pdf").read_bytes()
+    async with make_client(max_concurrency=1, queue_size=1) as client:
+        responses = await asyncio.gather(*(post_file(client, body) for _ in range(12)))
+        health = await client.get("/healthz")
+    statuses = sorted(r.status_code for r in responses)
+    assert set(statuses) <= {200, 503}
+    assert statuses.count(200) >= 1
+    assert statuses.count(503) >= 1
+    for r in responses:
+        if r.status_code == 503:
+            assert r.json() == {"error": "busy"}
+            assert int(r.headers["retry-after"]) >= 1
+    assert health.status_code == 200
+    assert_no_temp_files(tmp_upload_dir)
+
+
+async def test_slow_body_is_cut_off(make_client: ClientFactory, tmp_upload_dir: Path) -> None:
+    async def trickle() -> AsyncIterator[bytes]:
+        yield b"%PDF-1.7\n"
+        await asyncio.sleep(1)
+        yield b"never arrives in time"
+
+    async with make_client(body_timeout_seconds=0.2) as client:
+        r = await client.post(
+            "/v1/extract",
+            content=trickle(),
+            headers={SECRET_HEADER: SECRET, "content-type": "application/octet-stream"},
+        )
+    assert r.status_code == 408
+    assert r.json()["error"] == "body_timeout"
+    assert_no_temp_files(tmp_upload_dir)

@@ -42,6 +42,8 @@ spec:
           env:
             - { name: EXTRACTOR_TMP_DIR, value: /tmp }
             - { name: EXTRACTOR_MAX_CONCURRENCY, value: {{ .Values.extractor.maxConcurrency | quote }} }
+            - { name: EXTRACTOR_QUEUE_SIZE, value: {{ .Values.extractor.queueSize | quote }} }
+            - { name: EXTRACTOR_MAX_QUEUE_WAIT_SECONDS, value: {{ .Values.extractor.maxQueueWaitSeconds | quote }} }
             - { name: EXTRACTOR_TIMEOUT_SECONDS, value: {{ .Values.extractor.timeoutSeconds | quote }} }
             - { name: EXTRACTOR_MAX_PAGES, value: {{ .Values.extractor.maxPages | quote }} }
             - { name: EXTRACTOR_OCR_DPI, value: {{ .Values.extractor.ocrDpi | quote }} }

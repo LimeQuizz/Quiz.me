@@ -7,6 +7,7 @@
 | Extractor unit and fixtures | pytest | `extractor/tests/` | Python, Tesseract | `extractor-test` |
 | Extractor API | pytest + httpx (ASGI transport) | `extractor/tests/integration/` | Python, Tesseract | `extractor-test` |
 | End to end | Playwright against docker-compose | `web/e2e/` | Docker, built images | `e2e` |
+| Load / stress | `web/scripts/loadtest.mjs`, extractor overload tests | `web/scripts/`, `extractor/tests/` | Running stack | `e2e` |
 | Helm | `helm lint`, helm-unittest | `deploy/helm/quizme/tests/` | Helm | `helm` |
 | Static | ESLint, `tsc`, ruff, mypy `--strict`, CodeQL, gitleaks, Trivy | | | several |
 
@@ -82,6 +83,31 @@ flashcards, and confirm a second user cannot open the first user's deck by
 URL. The security tests check response headers, a fresh CSP nonce per
 request, that pages run with no CSP violations, and that cross-origin
 state-changing requests are refused.
+
+## Load and stress
+
+```sh
+# against the compose stack started for e2e (or any instance you own)
+cd web && node scripts/loadtest.mjs http://localhost:3000
+```
+
+The script floods `/signin` from one client with 64 concurrent connections
+for 10 seconds and checks that the per-IP limiter answers `429` with
+`Retry-After` and never a `5xx`, that `/api/health` stays fast during the
+flood, that an upload burst is limited per IP before authentication, that
+300 slowloris connections do not stop the server answering, and that a
+client who waits out `Retry-After` is served again. Tune it with
+`LOADTEST_FLOOD_SECONDS`, `LOADTEST_CONCURRENCY`, and `LOADTEST_SLOW_SOCKETS`.
+Only run it against infrastructure you own.
+
+On the extractor side, `tests/test_admission.py` covers the queue limits and
+the learned Retry-After, and `test_overload_sheds_with_503_and_retry_after`
+sends 12 simultaneous uploads at one slot and checks every request gets a
+200 or a `503 busy`, the service stays healthy, and no temp file is left.
+
+Unit tests in `web/tests/unit/traffic-guard.test.ts` cover the rate limiter
+(bursts, penalties for clients that ignore Retry-After, tightening under
+global pressure, bounded memory), the circuit breaker, and the upload gate.
 
 ## Helm
 

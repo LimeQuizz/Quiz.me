@@ -45,6 +45,10 @@ spec:
               value: {{ printf "http://%s-extractor:%v" (include "quizme.fullname" .) .Values.extractor.service.port | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.web.logLevel | quote }}
+            - name: TRUSTED_PROXY_HOPS
+              value: {{ .Values.web.trustedProxyHops | quote }}
+            - name: UPLOAD_MAX_IN_FLIGHT
+              value: {{ .Values.web.uploadMaxInFlight | quote }}
             - name: RUN_MIGRATIONS
               value: {{ .Values.web.runMigrations | quote }}
             {{- include "quizme.secretEnv" (dict "name" "DATABASE_URL" "path" "database" "secret" $s.database.existingSecret "key" $s.database.key) | nindent 12 }}

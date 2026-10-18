@@ -8,6 +8,14 @@ import { toCandidateCards, uuidSchema } from "@/lib/validation";
 import { assertDeckOwned, finishUpload, NotFoundError, reserveUpload } from "@/server/data";
 import { getUserId } from "@/server/auth/session";
 import { extractCards, ExtractorError } from "@/server/extractor";
+import {
+  clientIp,
+  getExtractorBreaker,
+  getRateLimiter,
+  getUploadGate,
+  rateLimitDisabled,
+  trustedProxyHops,
+} from "@/lib/traffic-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +29,8 @@ function json(body: unknown, status: number, extra: Record<string, string> = {})
   });
 }
 
+const BUSY_MESSAGE = "Quiz.me is busy right now. Please try again in a moment.";
+
 const UPLOAD_ERRORS: Record<UploadError["problem"], { status: number; message: string }> = {
   unsupported_file: { status: 415, message: "Only PDF and PowerPoint (.pptx) files are supported." },
   too_large: { status: 413, message: "The file is larger than 25 MB." },
@@ -32,9 +42,53 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   if (!isAllowedOrigin("POST", req.headers.get("origin"), allowedOrigins(req))) {
     return json({ error: "bad_origin" }, 403);
   }
+  // Cheap in-memory checks first, before any database work.
+  if (!rateLimitDisabled()) {
+    const ipDecision = getRateLimiter().check(clientIp(req.headers, trustedProxyHops()), "upload");
+    if (!ipDecision.allowed) {
+      return json({ error: "rate_limited", message: "Too many uploads from your network. Try again later." }, 429, {
+        "Retry-After": String(ipDecision.retryAfterSeconds),
+      });
+    }
+  }
   const userId = await getUserId();
   if (!userId) return json({ error: "unauthorized" }, 401);
 
+  // Load shedding for signed-in users only, so anonymous floods cannot use
+  // up the slots. The breaker stops sending work to a failing extractor.
+  const breaker = getExtractorBreaker().allow();
+  if (!breaker.allowed) {
+    return json({ error: "busy", message: BUSY_MESSAGE }, 503, { "Retry-After": String(breaker.retryAfterSeconds) });
+  }
+  // Every exit below must release the breaker's half-open probe slot and the
+  // gate; `settle` does both exactly once.
+  let settled = false;
+  const release = getUploadGate().tryEnter();
+  const settle = (outcome: "success" | "failure" | "neutral") => {
+    if (settled) return;
+    settled = true;
+    release?.();
+    if (outcome === "success") getExtractorBreaker().success();
+    else if (outcome === "failure") getExtractorBreaker().failure();
+    else getExtractorBreaker().neutral();
+  };
+  if (!release) {
+    settle("neutral");
+    return json({ error: "busy", message: BUSY_MESSAGE }, 503, { "Retry-After": "10" });
+  }
+  try {
+    return await handleUpload(req, requestId, userId, settle);
+  } finally {
+    settle("neutral");
+  }
+}
+
+async function handleUpload(
+  req: NextRequest,
+  requestId: string,
+  userId: string,
+  settle: (outcome: "success" | "failure" | "neutral") => void,
+): Promise<NextResponse> {
   const declared = Number(req.headers.get("content-length") ?? "0");
   if (declared > UPLOAD_MAX_BYTES) {
     return json({ error: "too_large", message: UPLOAD_ERRORS.too_large.message }, 413);
@@ -68,6 +122,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     guarded = await guardUpload(req.body);
     const result = await extractCards(guarded.stream, req.signal);
+    settle("success");
     const cards = toCandidateCards(result);
     await finishUpload(userId, reservation.eventId, "accepted", guarded.bytes());
     log.info("upload extracted", {
@@ -91,11 +146,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return json({ error: uploadErr.problem, message }, status);
     }
     if (err instanceof ExtractorError) {
+      // Bad files are the user's problem, not the extractor's; only
+      // overload, timeouts, and outages count against the breaker.
+      settle(err.status >= 500 ? "failure" : "success");
+      if (err.status === 503) {
+        await finishUpload(userId, reservation.eventId, "failed", bytes);
+        log.info("upload shed", { requestId, userId, reason: err.code });
+        return json({ error: "busy", message: BUSY_MESSAGE }, 503, { "Retry-After": String(err.retryAfter ?? 10) });
+      }
       const rejected = err.status === 413 || err.status === 415 || err.status === 422;
       await finishUpload(userId, reservation.eventId, rejected ? "rejected" : "failed", bytes);
       log.info("upload not extracted", { requestId, userId, reason: err.code, status: err.status, bytes });
       return json({ error: err.code, message: err.userMessage }, err.status);
     }
+    settle("failure");
     await finishUpload(userId, reservation.eventId, "failed", bytes).catch(() => {});
     log.error("upload failed", { requestId, userId, error: err instanceof Error ? err.name : "unknown" });
     return json({ error: "extraction_failed", message: "The file could not be processed." }, 502);

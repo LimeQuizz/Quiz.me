@@ -81,6 +81,8 @@ resource extractor 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'EXTRACTOR_OCR_DPI', value: '200' }
             { name: 'EXTRACTOR_MAX_CONCURRENCY', value: '2' }
             { name: 'EXTRACTOR_MEMORY_LIMIT_MB', value: '1536' }
+            { name: 'EXTRACTOR_QUEUE_SIZE', value: '4' }
+            { name: 'EXTRACTOR_MAX_QUEUE_WAIT_SECONDS', value: '30' }
           ]
           volumeMounts: [{ volumeName: 'scratch', mountPath: '/tmp' }]
           probes: [
@@ -145,6 +147,8 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'EXTRACTOR_URL', value: 'https://${extractor.properties.configuration.ingress.fqdn}' }
             { name: 'LOG_LEVEL', value: logLevel }
             { name: 'RUN_MIGRATIONS', value: 'true' }
+            // The Container Apps ingress (Envoy) appends one X-Forwarded-For hop.
+            { name: 'TRUSTED_PROXY_HOPS', value: '1' }
             { name: 'DATABASE_URL', secretRef: 'database-url' }
             { name: 'MIGRATION_DATABASE_URL', secretRef: 'migration-database-url' }
             { name: 'AUTH_SECRET', secretRef: 'auth-secret' }

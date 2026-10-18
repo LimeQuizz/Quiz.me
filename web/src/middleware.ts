@@ -8,17 +8,30 @@ import {
   isAllowedOrigin,
   STATIC_SECURITY_HEADERS,
 } from "@/lib/security-headers";
+import { clientIp, getRateLimiter, rateLimitDisabled, trustedProxyHops } from "@/lib/traffic-guard";
 
 /**
  * Security middleware for every page and API route except /api/uploads
  * (which streams its body and applies the same checks itself):
  * - origin check on state-changing methods (CSRF defense in depth on top of
  *   Auth.js's CSRF token and Next's server action origin check)
+ * - per-IP adaptive rate limit (see lib/traffic-guard.ts)
  * - request body size limit on Content-Length
  * - per-request CSP nonce and security headers
  */
 export function middleware(req: NextRequest): NextResponse {
   const { pathname } = req.nextUrl;
+
+  // Health probes come from the platform and must never be throttled.
+  if (pathname !== "/api/health" && !rateLimitDisabled()) {
+    const policy = req.method === "GET" || req.method === "HEAD" ? "read" : "write";
+    const decision = getRateLimiter().check(clientIp(req.headers, trustedProxyHops()), policy);
+    if (!decision.allowed) {
+      const res = NextResponse.json({ error: "rate_limited" }, { status: 429 });
+      res.headers.set("Retry-After", String(decision.retryAfterSeconds));
+      return withHeaders(res, null, req);
+    }
+  }
 
   // OAuth callbacks are protected by state/PKCE and may arrive as a
   // cross-site form POST from the identity provider.
@@ -55,5 +68,8 @@ function isHttps(req: NextRequest): boolean {
 }
 
 export const config = {
+  // Node.js runtime so the in-memory rate limiter is shared by all requests
+  // in the process.
+  runtime: "nodejs",
   matcher: ["/((?!api/uploads|_next/static|_next/image|favicon.ico).*)"],
 };

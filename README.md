@@ -77,6 +77,12 @@ for the full analysis and what is not covered.
   scripts, plus `X-Content-Type-Options`, `Referrer-Policy`,
   `Permissions-Policy`, `frame-ancestors 'none'`, and a cross-origin
   resource policy. Origin checks on every state-changing request.
+- Overload protection built into the app: per-IP rate limits that tighten
+  automatically when total traffic spikes and lengthen for clients that
+  ignore `Retry-After`; load shedding with `503` and an estimated
+  `Retry-After` when the extractor is busy; a circuit breaker in front of the
+  extractor; deadlines for slow clients. Network-level floods are left to
+  the hosting platform (see the threat model).
 - Card text is rendered as text, never as HTML.
 - Containers run as a non-root user with a read-only root filesystem.
 - Release images are signed with cosign and ship with an SBOM and SLSA
