@@ -14,6 +14,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { CARD_TYPES, UPLOAD_STATUSES, type CardType, type UploadStatus } from "../../lib/constants";
 
 const createdAt = () =>
   timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow();
@@ -85,8 +86,8 @@ export const verificationTokens = pgTable(
 // Application tables. Every row is reachable only through a user_id.
 // ---------------------------------------------------------------------------
 
-export const CARD_TYPES = ["basic", "multiple_choice", "fill_blank"] as const;
-export type CardType = (typeof CARD_TYPES)[number];
+export { CARD_TYPES, UPLOAD_STATUSES };
+export type { CardType, UploadStatus };
 
 export const decks = pgTable(
   "decks",
@@ -179,9 +180,6 @@ export const reviewLog = pgTable(
     check("review_log_rating", sql`${t.rating} between 1 and 4`),
   ],
 );
-
-export const UPLOAD_STATUSES = ["accepted", "rejected", "failed"] as const;
-export type UploadStatus = (typeof UPLOAD_STATUSES)[number];
 
 export const uploadEvents = pgTable(
   "upload_events",
