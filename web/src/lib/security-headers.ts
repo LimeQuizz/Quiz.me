@@ -6,6 +6,8 @@
 export interface CspOptions {
   nonce: string;
   dev?: boolean;
+  /** Served over https (directly or behind a TLS-terminating ingress). */
+  https?: boolean;
 }
 
 // Sign-in forms POST to /api/auth/signin/<provider>, which redirects to the
@@ -13,7 +15,7 @@ export interface CspOptions {
 // origins must be listed.
 const FORM_ACTION_ORIGINS = ["https://accounts.google.com", "https://login.microsoftonline.com", "https://login.live.com"];
 
-export function buildCsp({ nonce, dev = false }: CspOptions): string {
+export function buildCsp({ nonce, dev = false, https = true }: CspOptions): string {
   const directives: Record<string, string[]> = {
     "default-src": ["'self'"],
     "script-src": ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'", ...(dev ? ["'unsafe-eval'"] : [])],
@@ -30,7 +32,7 @@ export function buildCsp({ nonce, dev = false }: CspOptions): string {
     "worker-src": ["'self'"],
   };
   const parts = Object.entries(directives).map(([k, v]) => `${k} ${v.join(" ")}`);
-  if (!dev) parts.push("upgrade-insecure-requests");
+  if (https && !dev) parts.push("upgrade-insecure-requests");
   return parts.join("; ");
 }
 

@@ -13,6 +13,11 @@ describe("security headers", () => {
     expect(csp).not.toContain("unsafe-eval");
   });
 
+  it("upgrades insecure requests only over https", () => {
+    expect(buildCsp({ nonce: "n" })).toContain("upgrade-insecure-requests");
+    expect(buildCsp({ nonce: "n", https: false })).not.toContain("upgrade-insecure-requests");
+  });
+
   it("only relaxes eval in development", () => {
     expect(buildCsp({ nonce: "n", dev: true })).toContain("'unsafe-eval'");
   });

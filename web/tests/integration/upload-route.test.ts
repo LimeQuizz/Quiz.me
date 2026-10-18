@@ -16,7 +16,7 @@ function upload(body: BodyInit | null, { deckId, origin = ORIGIN }: { deckId?: s
   if (deckId) url.searchParams.set("deckId", deckId);
   const headers: Record<string, string> = { "content-type": "application/octet-stream" };
   if (origin) headers.origin = origin;
-  return POST(new NextRequest(url, { method: "POST", body, headers, duplex: "half" } as RequestInit & { duplex: "half" }));
+  return POST(new NextRequest(url, { method: "POST", body, headers, duplex: "half" } as ConstructorParameters<typeof NextRequest>[1]));
 }
 
 const extractorReply = {

@@ -1,0 +1,8 @@
+# Overlay for running `npm run dev` on the host against containerized
+# Postgres and extractor. Publishes the extractor on localhost only.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up postgres extractor
+services:
+  extractor:
+    networks: [extractor, edge]
+    ports:
+      - "127.0.0.1:8000:8000"

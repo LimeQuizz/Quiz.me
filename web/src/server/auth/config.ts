@@ -16,6 +16,8 @@ export const MICROSOFT_COMMON_ISSUER = "https://login.microsoftonline.com/common
 
 type Env = Record<string, string | undefined>;
 
+let warnedTestMode = false;
+
 export function secureCookiesFor(env: Env = process.env): boolean {
   return (env.AUTH_URL ?? "").startsWith("https://");
 }
@@ -49,7 +51,10 @@ export function buildProviders(env: Env = process.env): NextAuthConfig["provider
   ];
   if (env.AUTH_TEST_MODE === "true") {
     providers.push(createTestProvider(env));
-    log.warn("AUTH_TEST_MODE is enabled: password-less test sign-in is active");
+    if (!warnedTestMode) {
+      warnedTestMode = true;
+      log.warn("AUTH_TEST_MODE is enabled: password-less test sign-in is active");
+    }
   }
   return providers;
 }

@@ -1,0 +1,93 @@
+# Local stack: web + extractor + Postgres. Copy .env.example to .env first.
+#   docker compose up --build
+# Then open http://localhost:3000.
+name: quizme
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: quizme
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:?set POSTGRES_MIGRATOR_PASSWORD in .env}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./web/db/roles.sql:/quizme/roles.sql:ro
+      - ./web/db/compose-init.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d quizme"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [db]
+    restart: unless-stopped
+
+  extractor:
+    <<: *hardening
+    image: ${EXTRACTOR_IMAGE:-quizme-extractor:local}
+    build:
+      context: ./extractor
+    environment:
+      EXTRACTOR_SHARED_SECRET: ${EXTRACTOR_SHARED_SECRET:?set EXTRACTOR_SHARED_SECRET in .env}
+      EXTRACTOR_TMP_DIR: /tmp
+      EXTRACTOR_MEMORY_LIMIT_MB: "1536"
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 128
+    user: "10001:10001"
+    # Internal network only: the extractor needs no outbound access.
+    networks: [extractor]
+
+  web:
+    <<: *hardening
+    image: ${WEB_IMAGE:-quizme-web:local}
+    build:
+      context: ./web
+    depends_on:
+      postgres:
+        condition: service_healthy
+      extractor:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://quizme_app:${POSTGRES_APP_PASSWORD}@postgres:5432/quizme
+      MIGRATION_DATABASE_URL: postgres://quizme_migrator:${POSTGRES_MIGRATOR_PASSWORD}@postgres:5432/quizme
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
+      AUTH_MICROSOFT_ENTRA_ID_ID: ${AUTH_MICROSOFT_ENTRA_ID_ID:-}
+      AUTH_MICROSOFT_ENTRA_ID_SECRET: ${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
+      AUTH_TEST_MODE: ${AUTH_TEST_MODE:-false}
+      EXTRACTOR_URL: http://extractor:8000
+      EXTRACTOR_SHARED_SECRET: ${EXTRACTOR_SHARED_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/.next/cache:size=64m,uid=10001,gid=10001
+    mem_limit: 1g
+    pids_limit: 256
+    user: "10001:10001"
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks: [db, extractor, edge]
+
+networks:
+  db: {}
+  edge: {}
+  extractor:
+    internal: true
+
+volumes:
+  pgdata: {}
