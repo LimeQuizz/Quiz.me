@@ -1,0 +1,49 @@
+[project]
+name = "quizme-extractor"
+version = "0.1.0"
+description = "Turns PDF and PPTX files into candidate flashcards for Quiz.me"
+license = "Apache-2.0"
+requires-python = ">=3.12,<3.13"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "PL", "PT"]
+ignore = [
+  "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLR0911",
+  "S603",    # subprocess call: arguments are fixed, no shell
+  "S108",    # /tmp default is a tmpfs mount in every deployment
+  "RUF001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "PLR2004"]
+"scripts/**" = ["S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["app", "tests", "scripts"]
+
+# PyMuPDF ships partial annotations; calls into it are untyped.
+[[tool.mypy.overrides]]
+module = ["app.pipeline.text_pdf", "scripts.make_fixtures", "make_fixtures"]
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = ["pptx.*", "pytesseract.*", "reportlab.*", "pymupdf.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["integration: needs no network but spawns subprocesses"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+concurrency = ["thread", "multiprocessing"]
