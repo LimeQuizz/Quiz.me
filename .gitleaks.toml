@@ -9,6 +9,10 @@ description = "Documented placeholders and generated test fixtures"
 regexes = [
   '''<your-[a-z0-9-]+>''',
   '''change-me[a-z0-9-]*''',
+  # Azure built-in role definition IDs (public, identical in every tenant):
+  # Key Vault Secrets User, AcrPull.
+  '''4633458b-17de-408a-b874-0445c86b69e6''',
+  '''7f951dda-4ed3-4680-a7ca-43fe172d538d''',
 ]
 paths = [
   '''extractor/tests/fixtures/.*\.(pdf|pptx|pptm)$''',
